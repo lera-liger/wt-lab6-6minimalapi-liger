@@ -1,0 +1,61 @@
+@baseUrl = http://localhost:5076
+
+### GET service status
+GET {{baseUrl}}/
+
+### GET info
+GET {{baseUrl}}/api/info
+
+### GET all students (200)
+GET {{baseUrl}}/api/students
+
+### GET existing student (200)
+GET {{baseUrl}}/api/students/1
+
+### GET missing student (404)
+GET {{baseUrl}}/api/students/999
+
+### GET filtered students (200)
+GET {{baseUrl}}/api/students?search=Управление
+
+### POST new student (201; note generated ID)
+POST {{baseUrl}}/api/students
+Content-Type: application/json
+
+{
+  "fullName": "Орлова София Андреевна",
+  "specialty": "Управление информационными ресурсами",
+  "course": 2,
+  "averageGrade": 8.6,
+  "isEnrolled": true
+}
+
+### POST invalid student (400)
+POST {{baseUrl}}/api/students
+Content-Type: application/json
+
+{
+  "fullName": "А",
+  "specialty": "",
+  "course": 9,
+  "averageGrade": 12,
+  "isEnrolled": true
+}
+
+### PUT existing student (200)
+PUT {{baseUrl}}/api/students/1
+Content-Type: application/json
+
+{
+  "fullName": "Иванов Иван Иванович",
+  "specialty": "Информационные системы и технологии",
+  "course": 4,
+  "averageGrade": 9.1,
+  "isEnrolled": true
+}
+
+### DELETE existing student (204); re-run GET /api/students/6 -> 404
+DELETE {{baseUrl}}/api/students/6
+
+### OpenAPI specification
+GET {{baseUrl}}/swagger/v1/swagger.json

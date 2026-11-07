@@ -1,0 +1,17 @@
+﻿### Список студентов
+GET http://localhost:5239/api/students
+
+### Один студент
+GET http://localhost:5239/api/students/1
+
+### Создать студента
+POST http://localhost:5239/api/students
+Content-Type: application/json
+
+{
+  "fullName": "Талашкевич Дарья Романовна",
+  "specialty": "Управление информационными ресурсами",
+  "course": 4,
+  "averageGrade": 10,
+  "isEnrolled": true
+}
