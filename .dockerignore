@@ -1,6 +1,6 @@
-**/bin/
-**/obj/
-.vs/
-.git/
-*.user
-*.suo
+﻿namespace wt_lab6_6minimalapi_liger
+{
+    public class _
+    {
+    }
+}
