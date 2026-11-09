@@ -1,65 +1,94 @@
-﻿using wt_lab6_6minimalapi_liger.Data;
-using wt_lab6_6minimalapi_liger.Models;
+﻿using Microsoft.EntityFrameworkCore;
+using wt_lab7_7postgres_efcore_liger.Data;
+using wt_lab7_7postgres_efcore_liger.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();  // OpenAPI
+// 1. Подключение к БД (с учетом DATABASE_URL для Render)
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var databaseUrl = builder.Configuration["DATABASE_URL"];
+
+if (!string.IsNullOrWhiteSpace(databaseUrl))
+{
+    var uri = new Uri(databaseUrl);
+    var userInfo = uri.UserInfo.Split(':', 2);
+    connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={Uri.UnescapeDataString(userInfo[0])};Password={Uri.UnescapeDataString(userInfo[1])};SSL Mode=Disable";
+}
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+
+// Автоматическое применение миграций при запуске
+using (var scope = app.Services.CreateScope())
 {
-    app.MapOpenApi();
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/openapi/v1.json", "wt-lab6-6minimalapi-liger v1");
-    });
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
 }
 
-app.MapGet("/", () => "Minimal API работает!");
-app.MapGet("/api/info", () => new { Application = "Web Technologies", Technology = "ASP.NET Core Minimal API", Version = "1.0" });
-
-app.MapGet("/api/students", (string? search) =>
+if (app.Environment.IsDevelopment())
 {
-    var students = StudentStore.Students.AsEnumerable();
-    if (!string.IsNullOrWhiteSpace(search))
-    {
-        students = students.Where(s => s.FullName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
-                                       s.Specialty.Contains(search, StringComparison.OrdinalIgnoreCase));
-    }
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// ===== ЭНДПОИНТЫ (CRUD через EF Core) =====
+
+app.MapGet("/", () => "Minimal API работает с PostgreSQL!");
+
+app.MapGet("/api/info", () => new { Application = "Web Technologies", Technology = "ASP.NET Core Minimal API + PostgreSQL", Version = "2.0" });
+
+// Получение всех
+app.MapGet("/api/students", async (AppDbContext db) =>
+{
+    var students = await db.Students.ToListAsync();
     return Results.Ok(students);
 });
 
-app.MapGet("/api/students/{id}", (int id) =>
+// Получение по ID
+app.MapGet("/api/students/{id}", async (int id, AppDbContext db) =>
 {
-    var student = StudentStore.Students.FirstOrDefault(s => s.Id == id);
+    var student = await db.Students.FirstOrDefaultAsync(s => s.Id == id);
     if (student == null) return Results.NotFound();
     return Results.Ok(student);
 });
 
-app.MapPost("/api/students", (Student student) =>
+// Поиск
+app.MapGet("/api/students/search", async (string? search, AppDbContext db) =>
 {
-    if (string.IsNullOrWhiteSpace(student.FullName))
-        return Results.BadRequest("ФИО обязательно для заполнения.");
+    var query = db.Students.AsQueryable();
+    if (!string.IsNullOrWhiteSpace(search))
+    {
+        query = query.Where(s => s.FullName.ToLower().Contains(search.ToLower()) || s.Specialty.ToLower().Contains(search.ToLower()));
+    }
+    var students = await query.ToListAsync();
+    return Results.Ok(students);
+});
 
-    if (student.Course < 1 || student.Course > 4)
-        return Results.BadRequest("Курс должен быть от 1 до 4.");
+// Создание
+app.MapPost("/api/students", async (Student student, AppDbContext db) =>
+{
+    // Валидация
+    if (string.IsNullOrWhiteSpace(student.FullName)) return Results.BadRequest("ФИО обязательно.");
+    if (student.Course < 1 || student.Course > 4) return Results.BadRequest("Курс от 1 до 4.");
 
-    if (student.AverageGrade < 0 || student.AverageGrade > 10)
-        return Results.BadRequest("Средний балл должен быть от 0 до 10.");
+    student.Id = 0; // EF Core сгенерирует ID автоматически
+    student.CreatedAt = DateTime.UtcNow; // Устанавливаем дату создания
 
-    student.Id = StudentStore.Students.Any()
-        ? StudentStore.Students.Max(s => s.Id) + 1
-        : 1;
-
-    StudentStore.Students.Add(student);
-
+    db.Students.Add(student);
+    await db.SaveChangesAsync();
     return Results.Created($"/api/students/{student.Id}", student);
 });
 
-app.MapPut("/api/students/{id}", (int id, Student updatedStudent) =>
+// Обновление
+app.MapPut("/api/students/{id}", async (int id, Student updatedStudent, AppDbContext db) =>
 {
-    var student = StudentStore.Students.FirstOrDefault(s => s.Id == id);
+    var student = await db.Students.FirstOrDefaultAsync(s => s.Id == id);
     if (student == null) return Results.NotFound();
 
     student.FullName = updatedStudent.FullName;
@@ -68,15 +97,18 @@ app.MapPut("/api/students/{id}", (int id, Student updatedStudent) =>
     student.AverageGrade = updatedStudent.AverageGrade;
     student.IsEnrolled = updatedStudent.IsEnrolled;
 
+    await db.SaveChangesAsync();
     return Results.Ok(student);
 });
 
-app.MapDelete("/api/students/{id}", (int id) =>
+// Удаление
+app.MapDelete("/api/students/{id}", async (int id, AppDbContext db) =>
 {
-    var student = StudentStore.Students.FirstOrDefault(s => s.Id == id);
+    var student = await db.Students.FirstOrDefaultAsync(s => s.Id == id);
     if (student == null) return Results.NotFound();
 
-    StudentStore.Students.Remove(student);
+    db.Students.Remove(student);
+    await db.SaveChangesAsync();
     return Results.NoContent();
 });
 
