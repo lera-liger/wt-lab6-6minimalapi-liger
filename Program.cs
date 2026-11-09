@@ -4,7 +4,7 @@ using wt_lab7_7postgres_efcore_liger.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Подключение к БД (с учетом DATABASE_URL для Render)
+// Подключение к БД (с учетом DATABASE_URL для Render)
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 var databaseUrl = builder.Configuration["DATABASE_URL"];
 
@@ -18,13 +18,13 @@ if (!string.IsNullOrWhiteSpace(databaseUrl))
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
+// Swagger (Способ 3)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-
-// Автоматическое применение миграций при запуске
+// Автоматическое применение миграций
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -37,20 +37,17 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// ===== ЭНДПОИНТЫ (CRUD через EF Core) =====
+// ===== ЭНДПОИНТЫ =====
 
 app.MapGet("/", () => "Minimal API работает с PostgreSQL!");
-
 app.MapGet("/api/info", () => new { Application = "Web Technologies", Technology = "ASP.NET Core Minimal API + PostgreSQL", Version = "2.0" });
 
-// Получение всех
 app.MapGet("/api/students", async (AppDbContext db) =>
 {
     var students = await db.Students.ToListAsync();
     return Results.Ok(students);
 });
 
-// Получение по ID
 app.MapGet("/api/students/{id}", async (int id, AppDbContext db) =>
 {
     var student = await db.Students.FirstOrDefaultAsync(s => s.Id == id);
@@ -58,7 +55,6 @@ app.MapGet("/api/students/{id}", async (int id, AppDbContext db) =>
     return Results.Ok(student);
 });
 
-// Поиск
 app.MapGet("/api/students/search", async (string? search, AppDbContext db) =>
 {
     var query = db.Students.AsQueryable();
@@ -70,22 +66,20 @@ app.MapGet("/api/students/search", async (string? search, AppDbContext db) =>
     return Results.Ok(students);
 });
 
-// Создание
 app.MapPost("/api/students", async (Student student, AppDbContext db) =>
 {
-    // Валидация
     if (string.IsNullOrWhiteSpace(student.FullName)) return Results.BadRequest("ФИО обязательно.");
     if (student.Course < 1 || student.Course > 4) return Results.BadRequest("Курс от 1 до 4.");
+    if (student.AverageGrade < 0 || student.AverageGrade > 10) return Results.BadRequest("Средний балл от 0 до 10.");
 
-    student.Id = 0; // EF Core сгенерирует ID автоматически
-    student.CreatedAt = DateTime.UtcNow; // Устанавливаем дату создания
+    student.Id = 0;
+    student.CreatedAt = DateTime.UtcNow;
 
     db.Students.Add(student);
     await db.SaveChangesAsync();
     return Results.Created($"/api/students/{student.Id}", student);
 });
 
-// Обновление
 app.MapPut("/api/students/{id}", async (int id, Student updatedStudent, AppDbContext db) =>
 {
     var student = await db.Students.FirstOrDefaultAsync(s => s.Id == id);
@@ -101,7 +95,6 @@ app.MapPut("/api/students/{id}", async (int id, Student updatedStudent, AppDbCon
     return Results.Ok(student);
 });
 
-// Удаление
 app.MapDelete("/api/students/{id}", async (int id, AppDbContext db) =>
 {
     var student = await db.Students.FirstOrDefaultAsync(s => s.Id == id);
@@ -110,6 +103,25 @@ app.MapDelete("/api/students/{id}", async (int id, AppDbContext db) =>
     db.Students.Remove(student);
     await db.SaveChangesAsync();
     return Results.NoContent();
+});
+
+// LINQ-запросы
+app.MapGet("/api/students/top", async (AppDbContext db) =>
+{
+    var students = await db.Students.Where(s => s.AverageGrade > 4.0).ToListAsync();
+    return Results.Ok(students);
+});
+
+app.MapGet("/api/students/sorted", async (AppDbContext db) =>
+{
+    var students = await db.Students.OrderBy(s => s.FullName).ToListAsync();
+    return Results.Ok(students);
+});
+
+app.MapGet("/api/students/enrolled", async (AppDbContext db) =>
+{
+    var students = await db.Students.Where(s => s.IsEnrolled).OrderBy(s => s.Course).ToListAsync();
+    return Results.Ok(students);
 });
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "10000";
